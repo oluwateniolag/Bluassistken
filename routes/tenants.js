@@ -80,6 +80,9 @@ router.put('/onboarding/company', validateCompanyDetails, handleValidationErrors
 router.put('/onboarding/chatbot', validateChatbotConfig, handleValidationErrors, tenantController.configureChatbot);
 router.post('/onboarding/complete', tenantController.completeOnboarding);
 
+// Bot identity route
+router.put('/bot-identity', tenantController.updateBotIdentity);
+
 // Tenant management routes
 router.get('/me', tenantController.getCurrentTenant);
 

@@ -347,6 +347,81 @@ exports.getOnboardingStatus = async (req, res) => {
 };
 
 /**
+ * @desc    Update bot identity settings
+ * @route   PUT /api/tenants/bot-identity
+ * @access  Private
+ */
+exports.updateBotIdentity = async (req, res) => {
+  try {
+    const {
+      voiceTone,
+      voiceEmojis,
+      voiceEnergy,
+      platformName,
+      voiceWordsAvoid,
+      brandPersonality,
+      uxClosingSignoff,
+      uxOpeningGreeting,
+      voiceSentenceStyle,
+      platformDescription,
+      whatsappBotPhoneNumberId,
+      whatsappCountryCode
+    } = req.body;
+
+    const tenantId = req.user.tenant?.id || req.user.tenantId;
+    const tenant = await Tenant.findByPk(tenantId);
+
+    if (!tenant) {
+      return res.status(404).json({ success: false, message: 'Tenant not found' });
+    }
+
+    await tenant.update({
+      voiceTone,
+      voiceEmojis,
+      voiceEnergy,
+      platformName,
+      voiceWordsAvoid,
+      brandPersonality,
+      uxClosingSignoff,
+      uxOpeningGreeting,
+      voiceSentenceStyle,
+      platformDescription,
+      whatsappBotPhoneNumberId,
+      whatsappCountryCode
+    });
+
+    await tenant.reload();
+
+    res.json({
+      success: true,
+      message: 'Bot identity updated successfully',
+      data: {
+        tenant: {
+          voiceTone: tenant.voiceTone,
+          voiceEmojis: tenant.voiceEmojis,
+          voiceEnergy: tenant.voiceEnergy,
+          platformName: tenant.platformName,
+          voiceWordsAvoid: tenant.voiceWordsAvoid,
+          brandPersonality: tenant.brandPersonality,
+          uxClosingSignoff: tenant.uxClosingSignoff,
+          uxOpeningGreeting: tenant.uxOpeningGreeting,
+          voiceSentenceStyle: tenant.voiceSentenceStyle,
+          platformDescription: tenant.platformDescription,
+          whatsappBotPhoneNumberId: tenant.whatsappBotPhoneNumberId,
+          whatsappCountryCode: tenant.whatsappCountryCode
+        }
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error updating bot identity',
+      error: error.message
+    });
+  }
+};
+
+/**
  * @desc    Get current tenant details
  * @route   GET /api/tenants/me
  * @access  Private

@@ -129,6 +129,56 @@ const Tenant = sequelize.define('Tenant', {
     allowNull: true,
     unique: true
   },
+  // Bot Identity fields
+  voiceTone: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  voiceEmojis: {
+    type: DataTypes.BOOLEAN,
+    allowNull: true,
+    defaultValue: false
+  },
+  voiceEnergy: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  platformName: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  voiceWordsAvoid: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  brandPersonality: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  uxClosingSignoff: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  uxOpeningGreeting: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  voiceSentenceStyle: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  platformDescription: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  whatsappBotPhoneNumberId: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  whatsappCountryCode: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
   // Metadata stored as JSONB
   metadata: {
     type: DataTypes.JSONB,
