@@ -36,4 +36,7 @@ router.put('/config', validateChatbotConfig, handleValidationErrors, chatbotCont
 router.put('/toggle', chatbotController.toggleChatbot);
 router.post('/reset', chatbotController.resetChatbotConfig);
 
+// Botpress messaging
+router.post('/message', chatbotController.sendMessage);
+
 module.exports = router;

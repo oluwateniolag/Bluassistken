@@ -179,6 +179,11 @@ const Tenant = sequelize.define('Tenant', {
     type: DataTypes.STRING,
     allowNull: true
   },
+  // Botpress table row ID – stored so we can update the row later
+  botpressRowId: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
   // Metadata stored as JSONB
   metadata: {
     type: DataTypes.JSONB,

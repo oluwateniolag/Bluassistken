@@ -3,6 +3,7 @@ const { slugify, generateUniqueSlug } = require('../utils/slugify');
 const { Op } = require('sequelize');
 const { v4: uuidv4 } = require('uuid');
 const { ensureSubscriptionState } = require('../utils/subscription');
+const { getBotpressClient, uploadKbFile, kbContentToText } = require('../utils/botpress');
 
 /**
  * @desc    Get tenant's knowledge page (one per tenant). Returns page only when subscription is active.
@@ -147,7 +148,7 @@ exports.createKnowledgePage = async (req, res) => {
       });
     }
 
-    const tenant = await Tenant.findByPk(tenantId, { attributes: ['id', 'knowledgeBaseId', 'subscriptionEndDate'] });
+    const tenant = await Tenant.findByPk(tenantId, { attributes: ['id', 'knowledgeBaseId', 'subscriptionEndDate', 'botpressRowId'] });
     if (!tenant) {
       return res.status(404).json({
         success: false,
@@ -219,6 +220,52 @@ exports.createKnowledgePage = async (req, res) => {
     // Set knowledge base ID on tenant so it can be exposed in the portal (tenant already loaded above)
     if (!tenant.knowledgeBaseId) {
       await tenant.update({ knowledgeBaseId: uuidv4() });
+      await tenant.reload();
+    }
+
+    // Sync to Botpress: upload KB file + update KBId in tenant2kbTable (non-blocking)
+    try {
+      const bpClient = getBotpressClient();
+
+      // 1. Upload KB content for RAG indexing (two-step: register + PUT to S3)
+      await uploadKbFile({
+        key: `kb-${tenantId}/${page.id}.txt`,
+        content: kbContentToText(page.title, page.content),
+        title: page.title,
+        kbId: `kb-${tenantId}`
+      });
+
+      // 2. Ensure tenant has a Botpress table row (self-heal if registration missed it)
+      let bpRowId = tenant.botpressRowId;
+      if (!bpRowId) {
+        const { rows: newRows } = await bpClient.createTableRows({
+          table: 'tenant2kbTable',
+          rows: [{
+            KBId: tenant.knowledgeBaseId || '',
+            tenantId,
+            voiceTone: '', voiceEmojis: '', voiceEnergy: '',
+            restaurantName: '', voiceWordsAvoid: '', brandPersonality: '',
+            uxClosingSignoff: '', voiceWordsPrefer: '', uxOpeningGreeting: '',
+            voiceSentenceStyle: '', policyAllergenSafety: '',
+            restaurantDescription: '', whatsappBotPhoneNumberId: '',
+            policyUncertaintyFallback: ''
+          }]
+        });
+        if (newRows && newRows.length > 0) {
+          bpRowId = newRows[0].id;
+          await tenant.update({ botpressRowId: bpRowId });
+        }
+      }
+
+      // 3. Update KBId in tenant2kbTable
+      if (bpRowId) {
+        await bpClient.updateTableRows({
+          table: 'tenant2kbTable',
+          rows: [{ id: bpRowId, KBId: tenant.knowledgeBaseId || '' }]
+        });
+      }
+    } catch (bpError) {
+      console.error('Failed to sync knowledge page to Botpress:', bpError.message);
     }
 
     res.status(201).json({
@@ -305,6 +352,20 @@ exports.updateKnowledgePage = async (req, res) => {
     }
 
     await page.update(updateData);
+
+    // Re-upload to Botpress KB whenever content changes (two-step: register + PUT to S3)
+    if (updateData.content !== undefined) {
+      try {
+        await uploadKbFile({
+          key: `kb-${tenantId}/${page.id}.txt`,
+          content: kbContentToText(updateData.title || page.title, updateData.content),
+          title: updateData.title || page.title,
+          kbId: `kb-${tenantId}`
+        });
+      } catch (bpError) {
+        console.error('Failed to re-upload knowledge page to Botpress KB:', bpError.message);
+      }
+    }
 
     res.json({
       success: true,

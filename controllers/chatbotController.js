@@ -1,4 +1,5 @@
 const { Tenant } = require('../models');
+const { getBotpressClient } = require('../utils/botpress');
 
 /**
  * @desc    Get chatbot configuration
@@ -236,6 +237,81 @@ exports.resetChatbotConfig = async (req, res) => {
       success: false,
       message: 'Error resetting chatbot configuration',
       error: error.message
+    });
+  }
+};
+
+/**
+ * @desc    Send a message to Botpress and return the bot reply
+ * @route   POST /api/chatbot/message
+ * @access  Private
+ */
+exports.sendMessage = async (req, res) => {
+  try {
+    const { message, conversationId, userId } = req.body;
+
+    if (!message) {
+      return res.status(400).json({ success: false, message: 'message is required' });
+    }
+
+    const client = getBotpressClient();
+
+    // Create or reuse a conversation
+    let convId = conversationId;
+    if (!convId) {
+      const { conversation } = await client.createConversation({});
+      convId = conversation.id;
+    }
+
+    // Create or reuse a user
+    let bpUserId = userId;
+    if (!bpUserId) {
+      const { user } = await client.createUser({});
+      bpUserId = user.id;
+    }
+
+    // Send the message
+    await client.createMessage({
+      conversationId: convId,
+      userId: bpUserId,
+      type: 'text',
+      payload: { text: message },
+      tags: {},
+    });
+
+    // Poll for the bot reply (wait up to 10 s)
+    const started = Date.now();
+    let botReply = null;
+
+    while (Date.now() - started < 10000) {
+      await new Promise(r => setTimeout(r, 800));
+
+      const { messages } = await client.listMessages({ conversationId: convId });
+
+      // Find the most recent bot message sent after we posted
+      const botMessages = messages
+        .filter(m => m.userId !== bpUserId && m.type === 'text')
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+      if (botMessages.length > 0) {
+        botReply = botMessages[0].payload.text;
+        break;
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        conversationId: convId,
+        userId: bpUserId,
+        reply: botReply || 'No response received.',
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error communicating with Botpress',
+      error: error.message,
     });
   }
 };

@@ -3,6 +3,7 @@ const { generateToken } = require('../utils/jwt');
 const { slugify, generateUniqueSlug } = require('../utils/slugify');
 const { Op } = require('sequelize');
 const { ensureSubscriptionState } = require('../utils/subscription');
+const { getBotpressClient } = require('../utils/botpress');
 
 /**
  * @desc    Register a new tenant (Step 1: Basic Information)
@@ -68,6 +69,37 @@ exports.registerTenant = async (req, res) => {
     }, { transaction });
 
     await transaction.commit();
+
+    // Sync new tenant to Botpress tenant2kbTable (non-blocking – failure won't break registration)
+    try {
+      const bpClient = getBotpressClient();
+      const { rows } = await bpClient.createTableRows({
+        table: 'tenant2kbTable',
+        rows: [{
+          KBId: '',
+          tenantId: tenant.id,
+          voiceTone: '',
+          voiceEmojis: '',
+          voiceEnergy: '',
+          restaurantName: '',
+          voiceWordsAvoid: '',
+          brandPersonality: '',
+          uxClosingSignoff: '',
+          voiceWordsPrefer: '',
+          uxOpeningGreeting: '',
+          voiceSentenceStyle: '',
+          policyAllergenSafety: '',
+          restaurantDescription: '',
+          whatsappBotPhoneNumberId: '',
+          policyUncertaintyFallback: ''
+        }]
+      });
+      if (rows && rows.length > 0) {
+        await tenant.update({ botpressRowId: rows[0].id });
+      }
+    } catch (bpError) {
+      console.error('Failed to create Botpress table row for tenant:', bpError.message);
+    }
 
     // Generate JWT token
     const token = generateToken(user.id);
@@ -391,6 +423,60 @@ exports.updateBotIdentity = async (req, res) => {
     });
 
     await tenant.reload();
+
+    // Sync updated bot identity to Botpress tenant2kbTable
+    try {
+      const bpClient = getBotpressClient();
+
+      // Self-heal: create Botpress row if it was never created during registration
+      let bpRowId = tenant.botpressRowId;
+      if (!bpRowId) {
+        const { rows: newRows } = await bpClient.createTableRows({
+          table: 'tenant2kbTable',
+          rows: [{
+            KBId: tenant.knowledgeBaseId || '',
+            tenantId: tenant.id,
+            voiceTone: '', voiceEmojis: '', voiceEnergy: '',
+            restaurantName: '', voiceWordsAvoid: '', brandPersonality: '',
+            uxClosingSignoff: '', voiceWordsPrefer: '', uxOpeningGreeting: '',
+            voiceSentenceStyle: '', policyAllergenSafety: '',
+            restaurantDescription: '', whatsappBotPhoneNumberId: '',
+            policyUncertaintyFallback: ''
+          }]
+        });
+        if (newRows && newRows.length > 0) {
+          bpRowId = newRows[0].id;
+          await tenant.update({ botpressRowId: bpRowId });
+        }
+      }
+
+      if (bpRowId) {
+        await bpClient.updateTableRows({
+          table: 'tenant2kbTable',
+          rows: [{
+            id: bpRowId,
+            KBId: tenant.knowledgeBaseId || '',
+            tenantId: tenant.id,
+            voiceTone: tenant.voiceTone || '',
+            voiceEmojis: String(tenant.voiceEmojis ?? ''),
+            voiceEnergy: tenant.voiceEnergy || '',
+            restaurantName: tenant.platformName || '',
+            voiceWordsAvoid: tenant.voiceWordsAvoid || '',
+            brandPersonality: tenant.brandPersonality || '',
+            uxClosingSignoff: tenant.uxClosingSignoff || '',
+            voiceWordsPrefer: '',
+            uxOpeningGreeting: tenant.uxOpeningGreeting || '',
+            voiceSentenceStyle: tenant.voiceSentenceStyle || '',
+            policyAllergenSafety: '',
+            restaurantDescription: tenant.platformDescription || '',
+            whatsappBotPhoneNumberId: tenant.whatsappBotPhoneNumberId || '',
+            policyUncertaintyFallback: ''
+          }]
+        });
+      }
+    } catch (bpError) {
+      console.error('Failed to sync bot identity to Botpress table:', bpError.message);
+    }
 
     res.json({
       success: true,
