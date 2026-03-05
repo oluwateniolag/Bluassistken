@@ -34,12 +34,20 @@ const validateCompanyDetails = [
     .trim()
     .isLength({ max: 200 }).withMessage('Company name cannot exceed 200 characters'),
   body('website')
-    .optional()
-    .isURL().withMessage('Please provide a valid website URL'),
-  body('phone')
-    .optional()
+    .optional({ checkFalsy: true })
     .trim()
-    .matches(/^[\d\s\-\+\(\)]+$/).withMessage('Please provide a valid phone number')
+    .custom((value) => {
+      if (!value) return true;
+      const pattern = /^(https?:\/\/)?([\w\-]+\.)+[\w\-]{2,}(\/.*)?$/;
+      if (!pattern.test(value)) {
+        throw new Error('Please provide a valid website (e.g. www.example.com)');
+      }
+      return true;
+    }),
+  body('phone')
+    .trim()
+    .notEmpty().withMessage('Phone number is required')
+    .matches(/^\+[\d\s\-\(\)]{6,20}$/).withMessage('Please provide a valid phone number with country code')
 ];
 
 const validateSubscription = [
