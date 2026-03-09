@@ -24,7 +24,7 @@ const connectDB = async () => {
   try {
     await sequelize.authenticate();
     console.log('PostgreSQL connection has been established successfully.');
-    
+
     // Sync models in development (use migrations in production)
     if (process.env.NODE_ENV === 'development' && process.env.SYNC_DB === 'true') {
       await sequelize.sync({ alter: true });
