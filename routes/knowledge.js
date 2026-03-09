@@ -64,6 +64,9 @@ const validateUpdateKnowledgePage = [
 router.use(protect);
 router.use(checkTenantAccess);
 
+// File parsing route (multipart, no JSON body validation)
+router.post('/parse-file', knowledgeController.uploadMiddleware, knowledgeController.parseKnowledgeFile);
+
 // Knowledge Pages routes
 router.get('/pages', knowledgeController.getKnowledgePages);
 router.get('/pages/:id', knowledgeController.getKnowledgePage);

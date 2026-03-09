@@ -4,6 +4,32 @@ const { Op } = require('sequelize');
 const { v4: uuidv4 } = require('uuid');
 const { ensureSubscriptionState } = require('../utils/subscription');
 const { getBotpressClient, uploadKbFile, kbContentToText } = require('../utils/botpress');
+const multer = require('multer');
+const pdfParse = require('pdf-parse');
+const mammoth = require('mammoth');
+
+// Multer config: memory storage, 10MB limit, pdf/doc/docx/txt only
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain',
+      'text/html'
+    ];
+    const ext = (file.originalname || '').toLowerCase();
+    if (allowed.includes(file.mimetype) || ext.endsWith('.pdf') || ext.endsWith('.doc') || ext.endsWith('.docx') || ext.endsWith('.txt')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF, DOC, DOCX, and TXT files are allowed'));
+    }
+  }
+});
+
+exports.uploadMiddleware = upload.single('file');
 
 /**
  * @desc    Get tenant's knowledge page (one per tenant). Returns page only when subscription is active.
@@ -531,6 +557,81 @@ exports.getKnowledgeTemplate = async (req, res) => {
       success: false,
       message: 'Error fetching knowledge template',
       error: error.message
+    });
+  }
+};
+
+/**
+ * @desc    Parse uploaded PDF/DOC/DOCX/TXT and return extracted text
+ * @route   POST /api/knowledge/parse-file
+ * @access  Private
+ */
+exports.parseKnowledgeFile = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded' });
+    }
+
+    const { buffer, originalname, mimetype } = req.file;
+    const filename = originalname || '';
+    const ext = filename.toLowerCase();
+    let extractedText = '';
+
+    if (mimetype === 'application/pdf' || ext.endsWith('.pdf')) {
+      const data = await pdfParse(buffer);
+      extractedText = data.text || '';
+    } else if (
+      mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      ext.endsWith('.docx')
+    ) {
+      const result = await mammoth.extractRawText({ buffer });
+      extractedText = result.value || '';
+    } else if (
+      mimetype === 'application/msword' ||
+      ext.endsWith('.doc')
+    ) {
+      // Our generated .doc files are HTML — extract text from HTML tags
+      const html = buffer.toString('utf-8');
+      extractedText = html
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/p>/gi, '\n')
+        .replace(/<\/h[1-6]>/gi, '\n')
+        .replace(/<\/li>/gi, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&copy;/g, '©')
+        .replace(/\r\n|\r/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+    } else {
+      // Plain text or HTML
+      extractedText = buffer.toString('utf-8')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+        .replace(/&nbsp;/g, ' ')
+        .trim();
+    }
+
+    // Clean up excessive whitespace
+    extractedText = extractedText.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+
+    res.json({
+      success: true,
+      data: {
+        text: extractedText,
+        filename,
+        characterCount: extractedText.length
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to parse file: ' + error.message
     });
   }
 };
