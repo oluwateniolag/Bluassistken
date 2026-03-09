@@ -32,8 +32,8 @@ const connectDB = async () => {
       console.log('Database models synchronized.');
     }
   } catch (error) {
-    console.error('Unable to connect to the database:', error);
-    process.exit(1);
+    console.error('Unable to connect to the database:', error.message);
+    // Don't exit — let server start so CORS/health checks still respond
   }
 };
 
