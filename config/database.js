@@ -1,26 +1,25 @@
 const { Sequelize } = require('sequelize');
 
-// Database configuration
-const sequelize = new Sequelize(
-  process.env.DB_NAME || 'bluv2',
-  process.env.DB_USER || 'postgres',
-  process.env.DB_PASSWORD || 'postgres',
-  {
-    host: process.env.DB_HOST || 'localhost',
-    port: process.env.DB_PORT || 5432,
-    dialect: 'postgres',
-    logging: process.env.NODE_ENV === 'development' ? console.log : false,
-    pool: {
-      max: 5,
-      min: 0,
-      acquire: 30000,
-      idle: 10000
-    },
-    dialectOptions: process.env.DB_SSL === 'true' ? {
-      ssl: { require: true, rejectUnauthorized: false }
-    } : {}
-  }
-);
+// Use DATABASE_URL (Render PostgreSQL) or individual env vars
+const sequelize = process.env.DATABASE_URL
+  ? new Sequelize(process.env.DATABASE_URL, {
+      dialect: 'postgres',
+      logging: process.env.NODE_ENV === 'development' ? console.log : false,
+      pool: { max: 5, min: 0, acquire: 30000, idle: 10000 },
+      dialectOptions: { ssl: { require: true, rejectUnauthorized: false } }
+    })
+  : new Sequelize(
+      process.env.DB_NAME || 'bluv2',
+      process.env.DB_USER || 'postgres',
+      process.env.DB_PASSWORD || 'postgres',
+      {
+        host: process.env.DB_HOST || 'localhost',
+        port: process.env.DB_PORT || 5432,
+        dialect: 'postgres',
+        logging: process.env.NODE_ENV === 'development' ? console.log : false,
+        pool: { max: 5, min: 0, acquire: 30000, idle: 10000 }
+      }
+    );
 
 // Test connection
 const connectDB = async () => {
@@ -28,8 +27,7 @@ const connectDB = async () => {
     await sequelize.authenticate();
     console.log('PostgreSQL connection has been established successfully.');
 
-    // Sync models in development (use migrations in production)
-    if (process.env.NODE_ENV === 'development' && process.env.SYNC_DB === 'true') {
+    if (process.env.SYNC_DB === 'true') {
       await sequelize.sync({ alter: true });
       console.log('Database models synchronized.');
     }
